@@ -33,6 +33,8 @@ namespace NotionToJekyll
 
             var posts = await client.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
 
+            var serializer = new SerializerBuilder().Build();
+
             foreach (Page post in posts.Results)
             {
                 var postFrontMatter = new PostFrontMatter
@@ -42,9 +44,6 @@ namespace NotionToJekyll
                     NotionId = post.Id
                 };
 
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(PascalCaseNamingConvention.Instance)
-                    .Build();
                 var yaml = serializer.Serialize(postFrontMatter);
 
                 // Construct frontmatter
@@ -179,7 +178,6 @@ namespace NotionToJekyll
             {
                 text = $"[{text}]({richText.Href})";
             }
-
 
             if (richText.Annotations.IsBold && richText.Annotations.IsItalic)
             {
