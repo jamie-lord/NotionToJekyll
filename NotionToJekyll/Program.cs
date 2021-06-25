@@ -53,12 +53,21 @@ namespace NotionToJekyll
                 postFile += "---\n\n";
 
                 PaginatedList<Block> blocks = await blocksClient.RetrieveChildrenAsync(post.Id);
-                foreach (Block block in blocks.Results)
+                int numberedListItemNumber = 1;
+                for (int i = 0; i < blocks.Results.Count; i++)
                 {
+                    var block = blocks.Results[i];
+
                     switch (block.Type)
                     {
                         case BlockType.Paragraph:
-                            postFile += ((ParagraphBlock)block).Paragraph.Text.RichTextToMarkdown();
+                            var pb = (ParagraphBlock)block;
+                            if (!pb.Paragraph.Text.Any())
+                            {
+                                // Empty paragraph block, skip it
+                                continue;
+                            }
+                            postFile += pb.Paragraph.Text.RichTextToMarkdown();
                             break;
                         case BlockType.Heading_1:
                             postFile += $"# {((HeadingOneBlock)block).Heading_1.Text.RichTextToMarkdown()}";
@@ -73,6 +82,15 @@ namespace NotionToJekyll
                             postFile += $"- {((BulletedListItemBlock)block).BulletedListItem.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.NumberedListItem:
+                            postFile += $"{numberedListItemNumber}. {((NumberedListItemBlock)block).NumberedListItem.Text.RichTextToMarkdown()}";
+                            if (i != blocks.Results.Count && blocks.Results[i + 1].Type != BlockType.NumberedListItem)
+                            {
+                                numberedListItemNumber = 1;
+                            }
+                            else
+                            {
+                                numberedListItemNumber++;
+                            }
                             break;
                         case BlockType.ToDo:
                             break;
@@ -81,11 +99,20 @@ namespace NotionToJekyll
                         case BlockType.ChildPage:
                             break;
                         case BlockType.Unsupported:
+                            postFile += "UNSUPPORTED BLOCKTYPE";
                             break;
                         default:
                             break;
                     }
-                    postFile += "\n\n";
+
+                    if (i != blocks.Results.Count - 1 && (block.Type == BlockType.BulletedListItem || block.Type == BlockType.NumberedListItem) && blocks.Results[i + 1].Type == block.Type)
+                    {
+                        postFile += "\n";
+                    }
+                    else
+                    {
+                        postFile += "\n\n";
+                    }
                 }
             }
         }
