@@ -70,6 +70,7 @@ namespace NotionToJekyll
                             postFile += $"### {((HeadingThreeeBlock)block).Heading_3.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.BulletedListItem:
+                            postFile += $"- {((BulletedListItemBlock)block).BulletedListItem.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.NumberedListItem:
                             break;
@@ -145,37 +146,45 @@ namespace NotionToJekyll
 
         private static string RichTextToMarkdown(this RichTextText richText)
         {
+            string text = richText.PlainText;
+
+            if (richText.Href != null)
+            {
+                text = $"[{text}]({richText.Href})";
+            }
+
+
             if (richText.Annotations.IsBold && richText.Annotations.IsItalic)
             {
-                return $"***{richText.PlainText}***";
+                return $"***{text}***";
             }
 
             if (richText.Annotations.IsBold)
             {
-                return $"**{richText.PlainText}**";
+                return $"**{text}**";
             }
 
             if (richText.Annotations.IsItalic)
             {
-                return $"*{richText.PlainText}*";
+                return $"*{text}*";
             }
 
             if (richText.Annotations.IsCode)
             {
-                return $"`{richText.PlainText}`";
+                return $"`{text}`";
             }
 
             if (richText.Annotations.IsStrikeThrough)
             {
-                return $"~~{richText.PlainText}~~";
+                return $"~~{text}~~";
             }
 
             if (richText.Annotations.IsUnderline)
             {
-                return $"<u>{richText.PlainText}<u/>";
+                return $"<u>{text}</u>";
             }
 
-            return richText.PlainText;
+            return text;
         }
     }
 }
