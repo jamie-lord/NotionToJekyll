@@ -20,25 +20,54 @@ namespace NotionToJekyll
                 .Build();
 
 
-            var gitHubclient = new GitHubClient(new ProductHeaderValue("notion-to-jekyll"));
+            var gitHubClient = new GitHubClient(new ProductHeaderValue("notion-to-jekyll"));
             var tokenAuth = new Credentials(config["GitHubPat"]);
-            gitHubclient.Credentials = tokenAuth;
+            gitHubClient.Credentials = tokenAuth;
 
             var clientOptions = new ClientOptions
             {
                 AuthToken = config["NotionIntegrationToken"]
             };
 
-            var client = new NotionClient(clientOptions);
-            var blocksClient = new BlocksClient(new RestClient(clientOptions));
+            var repoOwner = config["GitHubRepoOwner"];
+            var repoName = config["GitHubRepoName"];
+            var postsDirectory = config["GitHubPostsDirectory"];
 
-            var databaseList = await client.Databases.ListAsync();
+            var yamlSerializer = new SerializerBuilder().Build();
+            var yamlDeserializer = new DeserializerBuilder().IgnoreUnmatchedProperties().Build();
 
+            // Get all existing posts from GitHub
+            IReadOnlyList<RepositoryContent> existingPostFiles = await gitHubClient.Repository.Content.GetAllContents(repoOwner, repoName, postsDirectory);
+            var existingPosts = new Dictionary<string, (RepositoryContent, PostFrontMatter)>();
+            foreach (var existingPostFile in existingPostFiles)
+            {
+                RepositoryContent post = (await gitHubClient.Repository.Content.GetAllContents(repoOwner, repoName, existingPostFile.Path)).Single();
+
+                // Deserialise Front Matter and get Notion ID and date
+                int pFrom = post.Content.IndexOf("---\n") + "---\n".Length;
+                int pTo = post.Content.LastIndexOf("---\n\n");
+
+                if (pFrom == -1 || pTo == -1)
+                {
+                    // File doesn't appear to have Front Matter
+                    continue;
+                }
+
+                var frontMatterString = post.Content.Substring(pFrom, pTo - pFrom);
+                PostFrontMatter fm = yamlDeserializer.Deserialize<PostFrontMatter>(frontMatterString);
+                if (fm.NotionId != null)
+                {
+                    existingPosts.Add(fm.NotionId, (post, fm));
+                }
+            }
+
+            var notionClient = new NotionClient(clientOptions);
+            var notionBlocksClient = new BlocksClient(new RestClient(clientOptions));
+
+            var databaseList = await notionClient.Databases.ListAsync();
             var postsDatabase = databaseList.Results.Single(x => x.Title.First().PlainText == "Posts");
-
-            var posts = await client.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
-
-            var serializer = new SerializerBuilder().Build();
+            var posts = await notionClient.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
+            var postsModified = new List<string>();
 
             foreach (Notion.Client.Page post in posts.Results)
             {
@@ -49,14 +78,14 @@ namespace NotionToJekyll
                     NotionId = post.Id
                 };
 
-                var yaml = serializer.Serialize(postFrontMatter);
+                var yaml = yamlSerializer.Serialize(postFrontMatter);
 
                 // Construct frontmatter
                 var postFile = "---\n";
                 postFile += yaml;
                 postFile += "---\n\n";
 
-                PaginatedList<Block> blocks = await blocksClient.RetrieveChildrenAsync(post.Id);
+                PaginatedList<Block> blocks = await notionBlocksClient.RetrieveChildrenAsync(post.Id);
                 int numberedListItemNumber = 1;
                 for (int i = 0; i < blocks.Results.Count; i++)
                 {
@@ -130,18 +159,27 @@ namespace NotionToJekyll
 
                 var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
 
-                var repoOwner = config["GitHubRepoOwner"];
-                var repoName = config["GitHubRepoName"];
-                var postsDirectory = config["GitHubPostsDirectory"];
+                // Update existing post with matching Notion ID and newer date
+                if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Date < postFrontMatter.Date)
+                {
+                    await gitHubClient.Repository.Content.UpdateFile(repoOwner, repoName, existingPosts[post.Id].Item1.Path, new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFile, existingPosts[post.Id].Item1.Sha));
+                }
+                // Create new post
+                else if (!existingPosts.ContainsKey(post.Id))
+                {
+                    await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
+                }
 
-                var postFiles = await gitHubclient.Repository.Content.GetAllContents(repoOwner, repoName, postsDirectory);
+                postsModified.Add(post.Id);
+            }
 
-                var f = await gitHubclient.Repository.Content.GetAllContents(repoOwner, repoName, postFiles.First().Path);
-
-                await gitHubclient.Repository.Content.UpdateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFile, postFiles.Single(x => x.Path == $"{postsDirectory}/{permalink}.markdown").Sha));
-
-                //await gitHubclient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
-
+            // Delete posts that no longer exist in Notion
+            foreach (KeyValuePair<string, (RepositoryContent, PostFrontMatter)> item in existingPosts)
+            {
+                if (!postsModified.Contains(item.Key))
+                {
+                    await gitHubClient.Repository.Content.DeleteFile(repoOwner, repoName, item.Value.Item1.Path, new DeleteFileRequest($"Deleted post '{item.Value.Item2.Title}'", item.Value.Item1.Sha));
+                }
             }
         }
 
