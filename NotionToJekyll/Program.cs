@@ -97,19 +97,28 @@ namespace NotionToJekyll
                             }
                             break;
                         case BlockType.ToDo:
+                            var todo = ((ToDoBlock)block).ToDo;
+                            if (todo.IsChecked)
+                            {
+                                postFile += $"- [x] {todo.Text.RichTextToMarkdown()}";
+                            }
+                            else
+                            {
+                                postFile += $"- [ ] {todo.Text.RichTextToMarkdown()}";
+                            }
                             break;
                         case BlockType.Toggle:
-                            break;
                         case BlockType.ChildPage:
-                            break;
                         case BlockType.Unsupported:
-                            postFile += "**Notion API unsupported blocktype**\n{: .notice--danger}";
+                            postFile += $"**Unsupported blocktype '{block.Type}'**\n{{: .notice--danger}}";
                             break;
                         default:
                             break;
                     }
 
-                    if (i != blocks.Results.Count - 1 && (block.Type == BlockType.BulletedListItem || block.Type == BlockType.NumberedListItem) && blocks.Results[i + 1].Type == block.Type)
+                    if (i != blocks.Results.Count - 1 &&
+                        (block.Type == BlockType.BulletedListItem || block.Type == BlockType.NumberedListItem || block.Type == BlockType.ToDo) &&
+                        blocks.Results[i + 1].Type == block.Type)
                     {
                         postFile += "\n";
                     }
