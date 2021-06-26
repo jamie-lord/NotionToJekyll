@@ -67,7 +67,6 @@ namespace NotionToJekyll
             var databaseList = await notionClient.Databases.ListAsync();
             var postsDatabase = databaseList.Results.Single(x => x.Title.First().PlainText == "Posts");
             var posts = await notionClient.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
-            var postsModified = new List<string>();
 
             foreach (Notion.Client.Page post in posts.Results)
             {
@@ -169,14 +168,12 @@ namespace NotionToJekyll
                 {
                     await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
                 }
-
-                postsModified.Add(post.Id);
             }
 
             // Delete posts that no longer exist in Notion
             foreach (KeyValuePair<string, (RepositoryContent, PostFrontMatter)> item in existingPosts)
             {
-                if (!postsModified.Contains(item.Key))
+                if (!posts.Results.Any(x => x.Id == item.Key))
                 {
                     await gitHubClient.Repository.Content.DeleteFile(repoOwner, repoName, item.Value.Item1.Path, new DeleteFileRequest($"Deleted post '{item.Value.Item2.Title}'", item.Value.Item1.Sha));
                 }
