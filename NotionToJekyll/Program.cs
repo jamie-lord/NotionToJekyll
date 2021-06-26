@@ -1,11 +1,11 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Notion.Client;
+using Octokit;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace NotionToJekyll
 {
@@ -18,6 +18,11 @@ namespace NotionToJekyll
                 .AddJsonFile("appsettings.json")
                 .AddUserSecrets<Program>()
                 .Build();
+
+
+            var gitHubclient = new GitHubClient(new ProductHeaderValue("notion-to-jekyll"));
+            var tokenAuth = new Credentials(config["GitHubPat"]);
+            gitHubclient.Credentials = tokenAuth;
 
             var clientOptions = new ClientOptions
             {
@@ -35,7 +40,7 @@ namespace NotionToJekyll
 
             var serializer = new SerializerBuilder().Build();
 
-            foreach (Page post in posts.Results)
+            foreach (Notion.Client.Page post in posts.Results)
             {
                 var postFrontMatter = new PostFrontMatter
                 {
@@ -98,7 +103,7 @@ namespace NotionToJekyll
                         case BlockType.ChildPage:
                             break;
                         case BlockType.Unsupported:
-                            postFile += "UNSUPPORTED BLOCKTYPE";
+                            postFile += "**Notion API unsupported blocktype**\n{: .notice--danger}";
                             break;
                         default:
                             break;
@@ -113,6 +118,21 @@ namespace NotionToJekyll
                         postFile += "\n\n";
                     }
                 }
+
+                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
+
+                var repoOwner = config["GitHubRepoOwner"];
+                var repoName = config["GitHubRepoName"];
+                var postsDirectory = config["GitHubPostsDirectory"];
+
+                var postFiles = await gitHubclient.Repository.Content.GetAllContents(repoOwner, repoName, postsDirectory);
+
+                var f = await gitHubclient.Repository.Content.GetAllContents(repoOwner, repoName, postFiles.First().Path);
+
+                await gitHubclient.Repository.Content.UpdateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFile, postFiles.Single(x => x.Path == $"{postsDirectory}/{permalink}.markdown").Sha));
+
+                //await gitHubclient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
+
             }
         }
 
