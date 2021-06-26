@@ -67,6 +67,7 @@ namespace NotionToJekyll
             var databaseList = await notionClient.Databases.ListAsync();
             var postsDatabase = databaseList.Results.Single(x => x.Title.First().PlainText == "Posts");
             var posts = await notionClient.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
+            var postsToUnpublish = new Dictionary<string, (RepositoryContent, PostFrontMatter)>();
 
             foreach (Notion.Client.Page post in posts.Results)
             {
@@ -76,6 +77,9 @@ namespace NotionToJekyll
                     Date = DateTime.Parse(((LastEditedTimePropertyValue)post.Properties["Updated"]).LastEditedTime),
                     NotionId = post.Id
                 };
+
+                var published = ((CheckboxPropertyValue)post.Properties["Published"]).Checkbox;
+                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
 
                 var yaml = yamlSerializer.Serialize(postFrontMatter);
 
@@ -156,17 +160,19 @@ namespace NotionToJekyll
                     }
                 }
 
-                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
-
                 // Update existing post with matching Notion ID and newer date
-                if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Date < postFrontMatter.Date)
+                if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Date < postFrontMatter.Date && published)
                 {
                     await gitHubClient.Repository.Content.UpdateFile(repoOwner, repoName, existingPosts[post.Id].Item1.Path, new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFile, existingPosts[post.Id].Item1.Sha));
                 }
                 // Create new post
-                else if (!existingPosts.ContainsKey(post.Id))
+                else if (!existingPosts.ContainsKey(post.Id) && published)
                 {
                     await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
+                }
+                else if (existingPosts.ContainsKey(post.Id) && !published)
+                {
+                    postsToUnpublish.Add(post.Id, existingPosts[post.Id]);
                 }
             }
 
@@ -177,6 +183,12 @@ namespace NotionToJekyll
                 {
                     await gitHubClient.Repository.Content.DeleteFile(repoOwner, repoName, item.Value.Item1.Path, new DeleteFileRequest($"Deleted post '{item.Value.Item2.Title}'", item.Value.Item1.Sha));
                 }
+            }
+
+            // Delete posts that exist but are no longer published
+            foreach (KeyValuePair<string, (RepositoryContent, PostFrontMatter)> item in postsToUnpublish)
+            {
+                await gitHubClient.Repository.Content.DeleteFile(repoOwner, repoName, item.Value.Item1.Path, new DeleteFileRequest($"Deleted post '{item.Value.Item2.Title}'", item.Value.Item1.Sha));
             }
         }
 
