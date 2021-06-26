@@ -39,6 +39,8 @@ namespace NotionToJekyll
             // Get all existing posts from GitHub
             IReadOnlyList<RepositoryContent> existingPostFiles = await gitHubClient.Repository.Content.GetAllContents(repoOwner, repoName, postsDirectory);
             var existingPosts = new Dictionary<string, (RepositoryContent, PostFrontMatter)>();
+
+            // Get full content of all existing post files
             foreach (var existingPostFile in existingPostFiles)
             {
                 RepositoryContent post = (await gitHubClient.Repository.Content.GetAllContents(repoOwner, repoName, existingPostFile.Path)).Single();
@@ -69,6 +71,7 @@ namespace NotionToJekyll
             var posts = await notionClient.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
             var postsToUnpublish = new Dictionary<string, (RepositoryContent, PostFrontMatter)>();
 
+            // Process each post in Notion
             foreach (Notion.Client.Page post in posts.Results)
             {
                 var postFrontMatter = new PostFrontMatter
@@ -81,13 +84,12 @@ namespace NotionToJekyll
                 var published = ((CheckboxPropertyValue)post.Properties["Published"]).Checkbox;
                 var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
 
-                var yaml = yamlSerializer.Serialize(postFrontMatter);
-
                 // Construct frontmatter
-                var postFile = "---\n";
-                postFile += yaml;
-                postFile += "---\n\n";
+                var postFileContent = "---\n";
+                postFileContent += yamlSerializer.Serialize(postFrontMatter);
+                postFileContent += "---\n\n";
 
+                // Get all Notion blocks for this post
                 PaginatedList<Block> blocks = await notionBlocksClient.RetrieveChildrenAsync(post.Id);
                 int numberedListItemNumber = 1;
                 for (int i = 0; i < blocks.Results.Count; i++)
@@ -103,22 +105,22 @@ namespace NotionToJekyll
                                 // Empty paragraph block, skip it
                                 continue;
                             }
-                            postFile += pb.Paragraph.Text.RichTextToMarkdown();
+                            postFileContent += pb.Paragraph.Text.RichTextToMarkdown();
                             break;
                         case BlockType.Heading_1:
-                            postFile += $"# {((HeadingOneBlock)block).Heading_1.Text.RichTextToMarkdown()}";
+                            postFileContent += $"# {((HeadingOneBlock)block).Heading_1.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.Heading_2:
-                            postFile += $"## {((HeadingTwoBlock)block).Heading_2.Text.RichTextToMarkdown()}";
+                            postFileContent += $"## {((HeadingTwoBlock)block).Heading_2.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.Heading_3:
-                            postFile += $"### {((HeadingThreeeBlock)block).Heading_3.Text.RichTextToMarkdown()}";
+                            postFileContent += $"### {((HeadingThreeeBlock)block).Heading_3.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.BulletedListItem:
-                            postFile += $"- {((BulletedListItemBlock)block).BulletedListItem.Text.RichTextToMarkdown()}";
+                            postFileContent += $"- {((BulletedListItemBlock)block).BulletedListItem.Text.RichTextToMarkdown()}";
                             break;
                         case BlockType.NumberedListItem:
-                            postFile += $"{numberedListItemNumber}. {((NumberedListItemBlock)block).NumberedListItem.Text.RichTextToMarkdown()}";
+                            postFileContent += $"{numberedListItemNumber}. {((NumberedListItemBlock)block).NumberedListItem.Text.RichTextToMarkdown()}";
                             if (i != blocks.Results.Count && blocks.Results[i + 1].Type != BlockType.NumberedListItem)
                             {
                                 numberedListItemNumber = 1;
@@ -132,17 +134,17 @@ namespace NotionToJekyll
                             var todo = ((ToDoBlock)block).ToDo;
                             if (todo.IsChecked)
                             {
-                                postFile += $"- [x] {todo.Text.RichTextToMarkdown()}";
+                                postFileContent += $"- [x] {todo.Text.RichTextToMarkdown()}";
                             }
                             else
                             {
-                                postFile += $"- [ ] {todo.Text.RichTextToMarkdown()}";
+                                postFileContent += $"- [ ] {todo.Text.RichTextToMarkdown()}";
                             }
                             break;
                         case BlockType.Toggle:
                         case BlockType.ChildPage:
                         case BlockType.Unsupported:
-                            postFile += $"**Unsupported blocktype '{block.Type}'**\n{{: .notice--danger}}";
+                            postFileContent += $"**Unsupported Notion blocktype '{block.Type}'**\n{{: .notice--danger}}";
                             break;
                         default:
                             break;
@@ -152,23 +154,23 @@ namespace NotionToJekyll
                         (block.Type == BlockType.BulletedListItem || block.Type == BlockType.NumberedListItem || block.Type == BlockType.ToDo) &&
                         blocks.Results[i + 1].Type == block.Type)
                     {
-                        postFile += "\n";
+                        postFileContent += "\n";
                     }
                     else
                     {
-                        postFile += "\n\n";
+                        postFileContent += "\n\n";
                     }
                 }
 
                 // Update existing post with matching Notion ID and newer date
                 if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Date < postFrontMatter.Date && published)
                 {
-                    await gitHubClient.Repository.Content.UpdateFile(repoOwner, repoName, existingPosts[post.Id].Item1.Path, new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFile, existingPosts[post.Id].Item1.Sha));
+                    await gitHubClient.Repository.Content.UpdateFile(repoOwner, repoName, existingPosts[post.Id].Item1.Path, new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFileContent, existingPosts[post.Id].Item1.Sha));
                 }
                 // Create new post
                 else if (!existingPosts.ContainsKey(post.Id) && published)
                 {
-                    await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFile));
+                    await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFileContent));
                 }
                 else if (existingPosts.ContainsKey(post.Id) && !published)
                 {
