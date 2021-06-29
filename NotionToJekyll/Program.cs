@@ -74,15 +74,21 @@ namespace NotionToJekyll
             // Process each post in Notion
             foreach (Notion.Client.Page post in posts.Results)
             {
+                var published = ((CheckboxPropertyValue)post.Properties["Published"]).Checkbox;
+                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
+
+                string[] categories = ((MultiSelectPropertyValue)post.Properties["Categories"]).MultiSelect.Select(x => x.Name).ToArray();
+                string[] tags = ((MultiSelectPropertyValue)post.Properties["Tags"]).MultiSelect.Select(x => x.Name).ToArray();
+
                 var postFrontMatter = new PostFrontMatter
                 {
                     Title = ((TitlePropertyValue)post.Properties["Title"]).Title.First().PlainText,
-                    Date = DateTime.Parse(((LastEditedTimePropertyValue)post.Properties["Updated"]).LastEditedTime),
-                    NotionId = post.Id
+                    Date = DateTime.Parse(((CreatedTimePropertyValue)post.Properties["Created"]).CreatedTime),
+                    Modified = DateTime.Parse(((LastEditedTimePropertyValue)post.Properties["Modified"]).LastEditedTime),
+                    NotionId = post.Id,
+                    Categories = categories,
+                    Tags = tags
                 };
-
-                var published = ((CheckboxPropertyValue)post.Properties["Published"]).Checkbox;
-                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
 
                 // Construct frontmatter
                 var postFileContent = "---\n";
@@ -163,7 +169,7 @@ namespace NotionToJekyll
                 }
 
                 // Update existing post with matching Notion ID and newer date
-                if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Date < postFrontMatter.Date && published)
+                if (existingPosts.ContainsKey(post.Id) && existingPosts[post.Id].Item2.Modified < postFrontMatter.Modified && published)
                 {
                     await gitHubClient.Repository.Content.UpdateFile(repoOwner, repoName, existingPosts[post.Id].Item1.Path, new UpdateFileRequest($"Updated post '{postFrontMatter.Title}'", postFileContent, existingPosts[post.Id].Item1.Sha));
                 }
@@ -201,6 +207,9 @@ namespace NotionToJekyll
 
             [YamlMember(Alias = "date")]
             public DateTime Date { get; set; }
+
+            [YamlMember(Alias = "last_modified_at")]
+            public DateTime Modified { get; set; }
 
             [YamlMember(Alias = "notion_id")]
             public string NotionId { get; set; }
