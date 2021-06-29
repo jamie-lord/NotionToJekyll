@@ -75,7 +75,7 @@ namespace NotionToJekyll
             foreach (Notion.Client.Page post in posts.Results)
             {
                 var published = ((CheckboxPropertyValue)post.Properties["Published"]).Checkbox;
-                var permalink = ((RichTextPropertyValue)post.Properties["Permalink"]).RichText.First().PlainText;
+                var postFileName = ((RichTextPropertyValue)post.Properties["File name"]).RichText.First().PlainText;
 
                 string[] categories = ((MultiSelectPropertyValue)post.Properties["Categories"]).MultiSelect.Select(x => x.Name).ToArray();
                 string[] tags = ((MultiSelectPropertyValue)post.Properties["Tags"]).MultiSelect.Select(x => x.Name).ToArray();
@@ -176,7 +176,7 @@ namespace NotionToJekyll
                 // Create new post
                 else if (!existingPosts.ContainsKey(post.Id) && published)
                 {
-                    await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{permalink}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFileContent));
+                    await gitHubClient.Repository.Content.CreateFile(repoOwner, repoName, $"{postsDirectory}/{postFileName}.markdown", new CreateFileRequest($"Added post '{postFrontMatter.Title}'", postFileContent));
                 }
                 else if (existingPosts.ContainsKey(post.Id) && !published)
                 {
