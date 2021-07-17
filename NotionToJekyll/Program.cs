@@ -64,8 +64,6 @@ namespace NotionToJekyll
             }
 
             var notionClient = new NotionClient(clientOptions);
-            var notionBlocksClient = new BlocksClient(new RestClient(clientOptions));
-
             var databaseList = await notionClient.Databases.ListAsync();
             var postsDatabase = databaseList.Results.Single(x => x.Title.First().PlainText == "Posts");
             var posts = await notionClient.Databases.QueryAsync(postsDatabase.Id, new DatabasesQueryParameters());
@@ -96,7 +94,7 @@ namespace NotionToJekyll
                 postFileContent += "---\n\n";
 
                 // Get all Notion blocks for this post
-                PaginatedList<Block> blocks = await notionBlocksClient.RetrieveChildrenAsync(post.Id);
+                PaginatedList<Block> blocks = await notionClient.Blocks.RetrieveChildrenAsync(post.Id);
                 int numberedListItemNumber = 1;
                 for (int i = 0; i < blocks.Results.Count; i++)
                 {
