@@ -19,15 +19,9 @@ namespace NotionToJekyll
                 .AddUserSecrets<Program>()
                 .Build();
 
-
             var gitHubClient = new GitHubClient(new ProductHeaderValue("notion-to-jekyll"));
             var tokenAuth = new Credentials(config["GitHubPat"]);
             gitHubClient.Credentials = tokenAuth;
-
-            var clientOptions = new ClientOptions
-            {
-                AuthToken = config["NotionIntegrationToken"]
-            };
 
             var repoOwner = config["GitHubRepoOwner"];
             var repoName = config["GitHubRepoName"];
@@ -64,6 +58,11 @@ namespace NotionToJekyll
                     existingPosts.Add(fm.NotionId, (post, fm));
                 }
             }
+
+            var clientOptions = new ClientOptions
+            {
+                AuthToken = config["NotionIntegrationToken"]
+            };
 
             var notionClient = new NotionClient(clientOptions);
             Console.WriteLine("Getting Notion databases");
