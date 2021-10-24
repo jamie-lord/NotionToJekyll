@@ -255,18 +255,6 @@ namespace NotionToJekyll
             return output;
         }
 
-        private static string RichTextToMarkdown(this IEnumerable<RichTextText> text)
-        {
-            string output = "";
-
-            foreach (RichTextText richText in text)
-            {
-                output += richText.RichTextToMarkdown();
-            }
-
-            return output;
-        }
-
         private static string RichTextToMarkdown(this RichTextText richText)
         {
             string text = richText.PlainText;
