@@ -151,7 +151,7 @@ namespace NotionToJekyll
                             break;
                         case BlockType.Code:
                             var code = ((CodeBlock)block).Code;
-                            postFileContent += $"```{code.Language}\n{code.Text}\n```";
+                            postFileContent += $"```{code.Language}\n{code.Text.RichTextToMarkdown()}\n```";
                             break;
                         case BlockType.Toggle:
                         case BlockType.ChildPage:
