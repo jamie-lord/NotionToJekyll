@@ -64,7 +64,7 @@ namespace NotionToJekyll
                 AuthToken = config["NotionIntegrationToken"]
             };
 
-            var notionClient = new NotionClient(clientOptions);
+            var notionClient = NotionClientFactory.Create(clientOptions);
             Console.WriteLine("Getting Notion databases");
             var databaseList = await notionClient.Databases.ListAsync();
             var postsDatabase = databaseList.Results.Single(x => x.Title.First().PlainText == "Posts");
@@ -98,11 +98,11 @@ namespace NotionToJekyll
                 postFileContent += "---\n\n";
 
                 // Get all Notion blocks for this post
-                PaginatedList<Block> blocks = await notionClient.Blocks.RetrieveChildrenAsync(post.Id);
+                PaginatedList<IBlock> blocks = await notionClient.Blocks.RetrieveChildrenAsync(post.Id);
                 int numberedListItemNumber = 1;
                 for (int i = 0; i < blocks.Results.Count; i++)
                 {
-                    var block = blocks.Results[i];
+                    IBlock block = blocks.Results[i];
 
                     switch (block.Type)
                     {
